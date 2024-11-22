@@ -1,0 +1,17 @@
+{
+  "name": "eticket-demo",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "phoenix-channels": "^1.0.0",
+    "ws": "^8.18.0"
+  }
+}
