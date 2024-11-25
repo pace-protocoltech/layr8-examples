@@ -4,6 +4,11 @@ const fs = require('fs');
 const { Socket } = require('phoenix-channels');
 const { randomUUID } = require('crypto');
 
+const queryParams = new URLSearchParams(process.env.STACKBLITZ_URL); // Assuming STACKBLITZ_URL contains the full URL
+const variable = queryParams.get('variable') || 'defaultValue';
+console.log(variable);
+
+
 // Configuration state
 let config = {
   host: null,
