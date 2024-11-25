@@ -4,9 +4,6 @@ const fs = require('fs');
 const { Socket } = require('phoenix-channels');
 const { randomUUID } = require('crypto');
 
-console.log(process.env.TITLE);
-console.log(process.env.STACKBLITZ_TITLE);
-
 // Configuration state
 let config = {
   host: null,
