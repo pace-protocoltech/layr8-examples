@@ -38,6 +38,7 @@ function connectToLayr8(config) {
 
   socket.onOpen(() => console.log('Connected to Layr8 server'));
   socket.onClose(() => console.log('Disconnected from Layr8 server'));
+  socket.onError((error) => console.log('Socket error:', error));
   socket.connect();
 
   const topic = `plugins:${config.myDid}`;
@@ -45,42 +46,57 @@ function connectToLayr8(config) {
     payload_types: [BASIC_MESSAGE, TRUST_PING],
   });
 
-  channel
-    .join(1000)
-    .receive('ok', () => console.log('Joined Layr8 channel'))
-    .receive('error', (resp) => console.log('Error joining channel:', resp));
+  return new Promise((resolve, reject) => {
+    channel
+      .join(1000)
+      .receive('ok', () => {
+        console.log('Joined Layr8 channel');
 
-  channel.on('message', (message) => {
-    console.log(JSON.stringify(message.context, null, 4));
+        // Set up channel message handler
+        channel.on('message', (message) => {
+          console.log(JSON.stringify(message.context, null, 4));
 
-    if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
-      const {
-        from,
-        body: { material, weight },
-        id,
-      } = message.plaintext;
+          if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
+            const {
+              from,
+              body: { material, weight },
+              id,
+            } = message.plaintext;
 
-      messageAddressMap.set(id, from);
-      console.log(`Stored return address ${from} for message ${id}`);
+            messageAddressMap.set(id, from);
+            console.log(`Stored return address ${from} for message ${id}`);
 
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(
-            JSON.stringify({
-              type: 'message',
-              sender:
-                message.context.sender_credentials[0].credentialSubject.label,
-              material: material,
-              weight: weight,
-              id: id,
-            })
-          );
-        }
+            wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(
+                  JSON.stringify({
+                    type: 'message',
+                    sender:
+                      message.context.sender_credentials[0].credentialSubject
+                        .label,
+                    material: material,
+                    weight: weight,
+                    id: id,
+                  })
+                );
+              }
+            });
+          }
+        });
+
+        resolve(channel);
+      })
+      .receive('error', (resp) => {
+        console.log('Error joining channel:', resp);
+        socket.disconnect();
+        reject(new Error(resp.reason || 'Failed to join channel'));
+      })
+      .receive('timeout', () => {
+        console.log('Timeout joining channel');
+        socket.disconnect();
+        reject(new Error('Connection timeout'));
       });
-    }
   });
-
-  return channel;
 }
 
 const server = http.createServer((req, res) => {
@@ -109,7 +125,7 @@ const server = http.createServer((req, res) => {
       body += chunk.toString();
     });
 
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const newConfig = JSON.parse(body);
 
@@ -123,17 +139,29 @@ const server = http.createServer((req, res) => {
           layr8Channel.leave();
         }
 
-        layr8Channel = connectToLayr8(config);
-
-        if (layr8Channel) {
+        try {
+          layr8Channel = await connectToLayr8(config);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ status: 'success' }));
-        } else {
-          throw new Error('Failed to establish Layr8 connection');
+        } catch (error) {
+          console.error('Layr8 connection error:', error);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              status: 'error',
+              message: error.message,
+            })
+          );
         }
       } catch (error) {
+        console.error('Configuration error:', error);
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'error', message: error.message }));
+        res.end(
+          JSON.stringify({
+            status: 'error',
+            message: error.message,
+          })
+        );
       }
     });
   } else if (req.url === '/config' && req.method === 'GET') {
@@ -176,6 +204,8 @@ const server = http.createServer((req, res) => {
         },
       };
 
+      console.log('Sending verification:', verificationMessage);
+
       layr8Channel
         .push('message', verificationMessage)
         .receive('ok', () => {
@@ -185,7 +215,7 @@ const server = http.createServer((req, res) => {
           res.end(JSON.stringify({ status: 'success' }));
         })
         .receive('error', (resp) => {
-          console.log('Verification sent in error');
+          console.log('Verification failed:', resp);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(
             JSON.stringify({
@@ -273,10 +303,37 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     console.log('Web client disconnected');
   });
+
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log('Waiting for configuration...');
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Closing server...');
+  if (layr8Channel) {
+    layr8Channel.leave();
+  }
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received. Closing server...');
+  if (layr8Channel) {
+    layr8Channel.leave();
+  }
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
