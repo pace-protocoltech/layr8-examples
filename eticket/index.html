@@ -105,6 +105,10 @@
         margin-top: 20px;
       }
 
+      .input-area input {
+        margin: 0;
+      }
+
       button {
         padding: 8px 16px;
         background-color: #1a73e8;
@@ -118,6 +122,11 @@
 
       button:hover {
         background-color: #1557b0;
+      }
+
+      button:disabled {
+        background-color: #9e9e9e;
+        cursor: not-allowed;
       }
 
       .verify-button {
@@ -150,11 +159,58 @@
         background-color: #fce8e6;
         color: #c5221f;
       }
+
+      .error-message {
+        color: #d93025;
+        background-color: #fce8e6;
+        padding: 12px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        display: none;
+        font-size: 14px;
+      }
+
+      .error-message.visible {
+        display: block;
+      }
+
+      .config-form button {
+        width: 100%;
+        margin-top: 10px;
+        position: relative;
+      }
+
+      /* Loading spinner */
+      .spinner {
+        display: none;
+        width: 20px;
+        height: 20px;
+        margin-left: 10px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #1a73e8;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        vertical-align: middle;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .connecting {
+        display: inline-block;
+      }
     </style>
   </head>
   <body>
     <div id="config-form" class="config-form">
       <h2>Layr8 Configuration</h2>
+      <div id="error-message" class="error-message"></div>
       <div class="input-group">
         <label for="host">Host</label>
         <input type="text" id="host" placeholder="Enter host address" />
@@ -171,7 +227,10 @@
         <label for="apiKey">API Key</label>
         <input type="password" id="apiKey" placeholder="Enter API key" />
       </div>
-      <button onclick="saveConfig()">Connect to Layr8</button>
+      <button id="connect-button" onclick="saveConfig()">
+        Connect to Layr8
+        <span id="loading-spinner" class="spinner"></span>
+      </button>
     </div>
 
     <div id="connection-status" class="connection-status disconnected">
@@ -179,12 +238,6 @@
     </div>
 
     <div id="chat-interface" class="chat-interface">
-      <input
-        type="hidden"
-        id="recipient-did"
-        placeholder="Enter recipient's DID"
-      />
-
       <div class="messages-container">
         <table class="messages-table">
           <thead>
@@ -200,28 +253,51 @@
         </table>
       </div>
 
-      <div class="input-area"></div>
+      <div class="input-area">
+        <input
+          type="text"
+          id="recipient-did"
+          placeholder="Enter recipient's DID"
+        />
+        <input type="text" id="material-input" placeholder="Enter material" />
+        <input type="text" id="weight-input" placeholder="Enter weight" />
+        <button onclick="sendMessage()">Send</button>
+      </div>
     </div>
 
     <script>
       let ws;
+      const connectButton = document.getElementById('connect-button');
+      const loadingSpinner = document.getElementById('loading-spinner');
+      const errorMessage = document.getElementById('error-message');
 
-      // Check configuration on page load
-      fetch('/config')
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.isConfigured) {
-            document.getElementById('host').value = data.config.host;
-            document.getElementById('myDid').value = data.config.myDid;
-            document.getElementById('apiKey').value = data.config.apiKey;
-            connectWebSocket();
-          }
-        })
-        .catch((error) => {
-          console.error('Error fetching config:', error);
-        });
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.classList.add('visible');
+        connectButton.disabled = false;
+        loadingSpinner.classList.remove('connecting');
+      }
+
+      function clearError() {
+        errorMessage.textContent = '';
+        errorMessage.classList.remove('visible');
+      }
+
+      function setLoading(isLoading) {
+        connectButton.disabled = isLoading;
+        if (isLoading) {
+          loadingSpinner.classList.add('connecting');
+          connectButton.textContent = 'Connecting...';
+        } else {
+          loadingSpinner.classList.remove('connecting');
+          connectButton.textContent = 'Connect to Layr8';
+        }
+      }
 
       function saveConfig() {
+        clearError();
+        setLoading(true);
+
         const config = {
           host: document.getElementById('host').value.trim(),
           myDid: document.getElementById('myDid').value.trim(),
@@ -229,7 +305,7 @@
         };
 
         if (!config.host || !config.myDid || !config.apiKey) {
-          alert('All fields are required');
+          showError('All fields are required');
           return;
         }
 
@@ -245,12 +321,22 @@
             if (data.status === 'success') {
               connectWebSocket();
             } else {
-              throw new Error(data.message || 'Failed to save configuration');
+              let errorMsg = data.message || 'Failed to save configuration';
+              if (errorMsg.includes('e.connect.plugin.failed')) {
+                const match = errorMsg.match(/\[{:error, :([^}]+)}\]/);
+                if (match) {
+                  errorMsg = `Connection failed: ${match[1].replace(
+                    /_/g,
+                    ' '
+                  )}`;
+                }
+              }
+              throw new Error(errorMsg);
             }
           })
           .catch((error) => {
             console.error('Error saving config:', error);
-            alert(error.message || 'Failed to save configuration');
+            showError(error.message || 'Failed to save configuration');
           });
       }
 
@@ -259,7 +345,7 @@
           ws.close();
         }
 
-        ws = new WebSocket('ws://localhost:3000');
+        ws = new WebSocket(`ws://${window.location.host}`);
 
         ws.onopen = () => {
           console.log('Connected to server');
@@ -287,6 +373,8 @@
             );
           } else if (message.type === 'error') {
             alert(message.message);
+          } else if (message.type === 'connectionStatus') {
+            updateConnectionStatus(message.connected);
           }
         };
       }
@@ -296,11 +384,14 @@
         const configForm = document.getElementById('config-form');
         const chatInterface = document.getElementById('chat-interface');
 
+        setLoading(false);
+
         if (connected) {
           statusElement.className = 'connection-status connected';
           statusElement.textContent = 'Connected to Layr8';
           configForm.classList.add('hidden');
           chatInterface.classList.add('visible');
+          clearError();
         } else {
           statusElement.className = 'connection-status disconnected';
           statusElement.textContent = 'Disconnected from Layr8';
@@ -314,20 +405,20 @@
         const timestamp = new Date().toLocaleTimeString();
 
         row.innerHTML = `
-                <td>${sender}</td>
-                <td>${material}</td>
-                <td>${weight}</td>
-                <td>${timestamp}</td>
-                <td>
-                    <button 
-                        class="verify-button" 
-                        onclick="verifyDelivery('${messageId}')" 
-                        id="verify-${messageId}"
-                    >
-                        Verify Delivery
-                    </button>
-                </td>
-            `;
+          <td>${sender}</td>
+          <td>${material}</td>
+          <td>${weight}</td>
+          <td>${timestamp}</td>
+          <td>
+            <button 
+              class="verify-button" 
+              onclick="verifyDelivery('${messageId}')" 
+              id="verify-${messageId}"
+            >
+              Verify Delivery
+            </button>
+          </td>
+        `;
 
         document.getElementById('messages').appendChild(row);
         scrollToBottom();
@@ -385,14 +476,28 @@
           })
         );
 
-        // Clear inputs
+        // Clear inputs after sending
         document.getElementById('material-input').value = '';
         document.getElementById('weight-input').value = '';
       }
 
+      // Check configuration on page load
+      fetch('/config')
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.isConfigured) {
+            document.getElementById('host').value = data.config.host;
+            document.getElementById('myDid').value = data.config.myDid;
+            document.getElementById('apiKey').value = data.config.apiKey;
+            connectWebSocket();
+          }
+        })
+        .catch((error) => {
+          console.error('Error fetching config:', error);
+        });
+
       // Add event listeners for Enter key
-      const inputs = ['recipient-did', 'material-input', 'weight-input'];
-      inputs.forEach((id) => {
+      ['recipient-did', 'material-input', 'weight-input'].forEach((id) => {
         document.getElementById(id).addEventListener('keypress', (e) => {
           if (e.key === 'Enter') {
             sendMessage();
