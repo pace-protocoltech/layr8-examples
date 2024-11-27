@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>DIDComm Chat</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f0f2f5;
+      }
+
+      .config-form {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        pointer-events: auto;
+      }
+
+      .config-form.hidden {
+        display: none;
+      }
+
+      .config-form h2 {
+        margin-top: 0;
+        color: #1a73e8;
+      }
+
+      .input-group {
+        margin-bottom: 15px;
+        position: relative;
+      }
+
+      .input-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: #5f6368;
+      }
+
+      input {
+        width: 100%;
+        padding: 8px;
+        margin: 8px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+        background-color: white;
+        position: relative;
+        z-index: 1;
+        pointer-events: auto;
+      }
+
+      input:not([type='radio']) {
+        width: 100%;
+      }
+
+      input[type='radio'] {
+        width: auto;
+        margin-right: 8px;
+        cursor: pointer;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+      }
+
+      .lookup-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: relative;
+        z-index: 2;
+      }
+
+      .lookup-section h2 {
+        margin-top: 0;
+        color: #1a73e8;
+        margin-bottom: 15px;
+      }
+
+      .lookup-options {
+        margin-bottom: 20px;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+      }
+
+      .lookup-options label {
+        margin-right: 20px;
+        color: #5f6368;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      #lookupForm {
+        display: flex;
+        gap: 10px;
+      }
+
+      #lookupForm input {
+        flex: 1;
+        margin: 0;
+      }
+
+      button {
+        padding: 8px 16px;
+        background-color: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background-color 0.2s;
+        position: relative;
+        z-index: 1;
+      }
+
+      button:hover {
+        background-color: #1557b0;
+      }
+
+      .connection-status {
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+        text-align: center;
+        font-weight: 500;
+      }
+
+      .connection-status.connected {
+        background-color: #e6f4ea;
+        color: #137333;
+      }
+
+      .connection-status.disconnected {
+        background-color: #fce8e6;
+        color: #c5221f;
+      }
+
+      .messages-container {
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        margin-bottom: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .messages-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+      }
+
+      .messages-table th,
+      .messages-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+      }
+
+      .messages-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #5f6368;
+      }
+
+      .messages-table tr:hover {
+        background-color: #f8f9fa;
+      }
+
+      .chat-interface {
+        display: none;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .chat-interface.visible {
+        display: block;
+      }
+
+      .input-area {
+        display: grid;
+        grid-template-columns: 1fr 1fr 100px;
+        gap: 10px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="lookup-section">
+      <h2>Configuration Method</h2>
+      <div class="lookup-options">
+        <label>
+          <input type="radio" name="configMethod" value="manual" checked />
+          Manual Entry
+        </label>
+        <label>
+          <input type="radio" name="configMethod" value="lookup" />
+          Lookup by Number
+        </label>
+      </div>
+      <div id="lookupForm" style="display: none">
+        <input
+          type="text"
+          id="lookupNumber"
+          placeholder="Enter unique number"
+        />
+        <button onclick="performLookup()">Lookup</button>
+      </div>
+    </div>
+
+    <div id="connection-status" class="connection-status disconnected">
+      Disconnected from Layr8
+    </div>
+
+    <div id="config-form" class="config-form">
+      <h2>Layr8 Configuration</h2>
+      <form onsubmit="return false;">
+        <div class="input-group">
+          <label for="host">Host</label>
+          <input
+            type="text"
+            id="host"
+            placeholder="Enter host address"
+            autocomplete="off"
+          />
+        </div>
+        <div class="input-group">
+          <label for="myDid">DID</label>
+          <input
+            type="text"
+            id="myDid"
+            placeholder="Enter your DID to connect to"
+            autocomplete="off"
+          />
+        </div>
+        <div class="input-group">
+          <label for="apiKey">API Key</label>
+          <input
+            type="password"
+            id="apiKey"
+            placeholder="Enter API key"
+            autocomplete="off"
+          />
+        </div>
+        <button type="button" onclick="saveConfig()">Connect to Layr8</button>
+      </form>
+    </div>
+
+    <div id="chat-interface" class="chat-interface">
+      <div class="messages-container">
+        <table class="messages-table">
+          <thead>
+            <tr>
+              <th>Sender</th>
+              <th>Material</th>
+              <th>Weight</th>
+              <th>Time</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="messages"></tbody>
+        </table>
+      </div>
+      <div class="input-area"></div>
+    </div>
+
+    <script>
+      let ws;
+
+      function verifyDelivery(messageId) {
+        fetch(`/verify/${messageId}`, {
+          method: 'POST',
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status === 'success') {
+              const button = document.getElementById(`verify-${messageId}`);
+              button.classList.add('verified');
+              button.textContent = 'Verified';
+              button.disabled = true;
+            } else {
+              throw new Error(data.message || 'Verification failed');
+            }
+          })
+          .catch((error) => {
+            console.error('Error verifying message:', error);
+            alert(error.message || 'Failed to verify message');
+          });
+      }
+
+      // Check configuration on page load
+      fetch('/config')
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.isConfigured) {
+            document.getElementById('host').value = data.config.host;
+            document.getElementById('myDid').value = data.config.myDid;
+            document.getElementById('apiKey').value = data.config.apiKey;
+            connectWebSocket();
+          }
+        })
+        .catch((error) => {
+          console.error('Error fetching config:', error);
+        });
+
+      // Form handling
+      document.querySelectorAll('form').forEach((form) => {
+        form.addEventListener('submit', (e) => e.preventDefault());
+      });
+
+      // Lookup functionality
+      document.getElementsByName('configMethod').forEach((radio) => {
+        radio.addEventListener('change', (e) => {
+          document.getElementById('lookupForm').style.display =
+            e.target.value === 'lookup' ? 'block' : 'none';
+        });
+      });
+
+      document
+        .getElementById('lookupNumber')
+        .addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            performLookup();
+          }
+        });
+
+      async function performLookup() {
+        const number = document.getElementById('lookupNumber').value.trim();
+        if (!number) {
+          alert('Please enter a number');
+          return;
+        }
+
+        try {
+          const timestamp = new Date().getTime();
+          const response = await fetch(
+            `https://api.allorigins.win/raw?timestamp=${timestamp}&url=http://143.198.3.237/api/lookup/${number}`
+          );
+          if (!response.ok) {
+            throw new Error('Lookup failed');
+          }
+          const data = await response.json();
+
+          document.getElementById('host').value = data.host;
+          document.getElementById('myDid').value = data.did;
+          document.getElementById('apiKey').value = data.key;
+        } catch (error) {
+          console.error('Lookup error:', error);
+          alert('Failed to lookup configuration: ' + error.message);
+        }
+      }
+
+      function saveConfig() {
+        const config = {
+          host: document.getElementById('host').value.trim(),
+          myDid: document.getElementById('myDid').value.trim(),
+          apiKey: document.getElementById('apiKey').value.trim(),
+        };
+
+        if (!config.host || !config.myDid || !config.apiKey) {
+          alert('All fields are required');
+          return;
+        }
+
+        fetch('/config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(config),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.status === 'success') {
+              connectWebSocket();
+            } else {
+              throw new Error(data.message || 'Failed to save configuration');
+            }
+          })
+          .catch((error) => {
+            console.error('Error saving config:', error);
+            alert(error.message || 'Failed to save configuration');
+          });
+      }
+
+      function connectWebSocket() {
+        if (ws) {
+          ws.close();
+        }
+
+        ws = new WebSocket('ws://localhost:3000');
+
+        ws.onopen = () => {
+          console.log('Connected to server');
+          updateConnectionStatus(true);
+        };
+
+        ws.onclose = () => {
+          console.log('Disconnected from server');
+          updateConnectionStatus(false);
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          updateConnectionStatus(false);
+        };
+
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === 'message') {
+            addMessage(
+              message.sender,
+              message.material,
+              message.weight,
+              message.id
+            );
+          } else if (message.type === 'error') {
+            alert(message.message);
+          } else if (message.type === 'connectionStatus') {
+            updateConnectionStatus(message.connected);
+          }
+        };
+      }
+
+      function updateConnectionStatus(connected) {
+        const statusElement = document.getElementById('connection-status');
+        const configForm = document.getElementById('config-form');
+        const chatInterface = document.getElementById('chat-interface');
+
+        if (connected) {
+          statusElement.className = 'connection-status connected';
+          statusElement.textContent = 'Connected to Layr8';
+          configForm.classList.add('hidden');
+          chatInterface.classList.add('visible');
+        } else {
+          statusElement.className = 'connection-status disconnected';
+          statusElement.textContent = 'Disconnected from Layr8';
+          configForm.classList.remove('hidden');
+          chatInterface.classList.remove('visible');
+        }
+      }
+
+      function addMessage(sender, material, weight, messageId) {
+        const row = document.createElement('tr');
+        const timestamp = new Date().toLocaleTimeString();
+
+        row.innerHTML = `
+          <td>${sender}</td>
+          <td>${material}</td>
+          <td>${weight}</td>
+          <td>${timestamp}</td>
+          <td>
+            <button 
+              class="verify-button" 
+              onclick="verifyDelivery('${messageId}')" 
+              id="verify-${messageId}"
+            >
+              Verify Delivery
+            </button>
+          </td>
+        `;
+
+        document.getElementById('messages').appendChild(row);
+        scrollToBottom();
+      }
+
+      function scrollToBottom() {
+        const container = document.querySelector('.messages-container');
+        container.scrollTop = container.scrollHeight;
+      }
+
+      // Ensure input fields are enabled on page load
+      window.addEventListener('DOMContentLoaded', () => {
+        const inputs = document.querySelectorAll('input');
+        inputs.forEach((input) => {
+          input.disabled = false;
+        });
+      });
+    </script>
+  </body>
+</html>
