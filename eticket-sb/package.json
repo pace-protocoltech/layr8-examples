@@ -1,0 +1,19 @@
+{
+  "name": "eticket-demo",
+  "private": true,
+  "scripts": {
+    "start": "node -r dotenv/config index.js"
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@stackblitz/sdk": "^1.11.0",
+    "dotenv": "^16.3.1",
+    "phoenix-channels": "^1.0.0",
+    "ws": "^8.18.0"
+  }
+}
