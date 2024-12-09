@@ -30,6 +30,16 @@ function connectToLayr8(config) {
     return null;
   }
 
+  const send_acks = (channel, ids) => {
+    //console.log("\nSending acks...");
+    channel
+      .push('ack', { ids: ids }, 10000)
+      //.receive("ok", () => console.log("Acks sent successfully"))
+      .receive('error', (error) =>
+        console.log('\nError sending acks:', error.reason)
+      );
+  };
+
   const url = `${config.scheme}://${config.host}:${config.port}/plugin_socket`;
   const socket = new Socket(url, {
     timeout: 1000,
@@ -62,6 +72,8 @@ function connectToLayr8(config) {
               body: { material, weight },
               id,
             } = message.plaintext;
+
+            send_acks(channel, [id]);
 
             messageAddressMap.set(id, from);
             console.log(`Stored return address ${from} for message ${id}`);
