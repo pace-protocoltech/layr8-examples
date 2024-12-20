@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package truckit.eticket.v1;
+
+
+message GeoCoordinates {
+    string lat = 1;
+    string long = 2;
+    google.protobuf.Timestamp measuredAt = 3;
+}
+
+message CheckIn {
+    string truckid = 1;
+    string jobid = 2;
+    google.protobuf.Timestamp arrivedAt = 3;
+    GeoCoordinates coordinates = 4;
+}
+
+message CheckInConfirmation {
+    string sessionid = 1;
+    google.protobuf.Timestamp checkedInAt = 2;
+    // future how often to send coords
+}
+
+message CheckOut {
+    string sessionid = 1;
+    string truckid = 2;
+    string jobid = 3;
+    google.protobuf.Timestamp departedAt = 4;
+    GeoCoordinates coordinates = 5;
+}
+
+message CheckOutConfirmation {
+    string sessionid = 1;
+    google.protobuf.Timestamp checkedOutAt = 2;
+    // future how often to send coords
+}
+
+message NewETicket {
+    string truckid = 1;
+    string jobid = 2;
+    string ticketid = 3;
+    double grossweight = 4;
+    double tareweight = 5;
+    double netweight = 6;
+    string material = 7;
+    string ticketId = 8;
+    
+}
+
+message EticketReceivedConfirmation {
+    string ticketId = 1;
+    google.protobuf.Timestamp receivedAt = 2;
+    // future how often to send coords
+}
+
+
+message NewJob {
+    string jobid = 1;
+    google.protobuf.Timestamp start_time = 2;
+    string material = 3;
+    int32 quantity = 4;
+    string buyer_did = 5;
+    string destination = 6;
+    GeoCoordinates destination_coordinates = 7;
+    
+}
