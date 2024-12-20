@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Truck Check-in System</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 20px auto;
+        padding: 20px;
+      }
+      #messageLog {
+        height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin: 10px 0;
+        background: #f9f9f9;
+      }
+      .message {
+        margin: 5px 0;
+        padding: 5px;
+        border-bottom: 1px solid #eee;
+      }
+      #eticket {
+        background: #e6f3ff;
+        padding: 10px;
+        border: 1px solid #b3d7ff;
+        border-radius: 4px;
+        margin: 10px 0;
+        display: none;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+      }
+      button:disabled {
+        background: #cccccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+      }
+      .connected {
+        background: #d4edda;
+        color: #155724;
+      }
+      .disconnected {
+        background: #f8d7da;
+        color: #721c24;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Truck Check-in System</h1>
+    <div id="connectionStatus" class="status disconnected">Disconnected</div>
+    <button id="startButton" disabled>Start Check-in Process</button>
+    <div id="eticket">
+      <h3>New E-ticket Received</h3>
+      <pre id="eticketContent"></pre>
+    </div>
+    <div id="messageLog"></div>
+
+    <script>
+      // DOM Elements
+      const messageLog = document.getElementById('messageLog');
+      const startButton = document.getElementById('startButton');
+      const eticketDiv = document.getElementById('eticket');
+      const eticketContent = document.getElementById('eticketContent');
+      const connectionStatus = document.getElementById('connectionStatus');
+
+      function logMessage(message) {
+        const div = document.createElement('div');
+        div.className = 'message';
+        div.textContent = new Date().toLocaleTimeString() + ': ' + message;
+        messageLog.appendChild(div);
+        messageLog.scrollTop = messageLog.scrollHeight;
+      }
+
+      function updateConnectionStatus(connected) {
+        connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+        connectionStatus.className = `status ${
+          connected ? 'connected' : 'disconnected'
+        }`;
+        startButton.disabled = !connected;
+      }
+
+      // Set up event source for server updates
+      const eventSource = new EventSource('/events');
+
+      eventSource.onopen = () => {
+        logMessage('Connected to server events');
+      };
+
+      eventSource.addEventListener('connected', (e) => {
+        updateConnectionStatus(true);
+        logMessage(e.data);
+      });
+
+      eventSource.addEventListener('disconnected', (e) => {
+        updateConnectionStatus(false);
+        logMessage(e.data);
+      });
+
+      eventSource.addEventListener('error', (e) => {
+        updateConnectionStatus(false);
+        logMessage('Connection to server lost');
+      });
+
+      eventSource.addEventListener('message', (e) => {
+        logMessage(e.data);
+      });
+
+      eventSource.addEventListener('eticket', (e) => {
+        const ticket = JSON.parse(e.data);
+        eticketDiv.style.display = 'block';
+        eticketContent.textContent = JSON.stringify(ticket, null, 2);
+        logMessage('Received new e-ticket');
+      });
+
+      // Handle check-in button click
+      startButton.onclick = async () => {
+        try {
+          const response = await fetch('/checkin', { method: 'POST' });
+          if (!response.ok) {
+            const error = await response.json();
+            logMessage(`Error: ${error.error}`);
+          }
+        } catch (error) {
+          logMessage(`Error: ${error.message}`);
+        }
+      };
+    </script>
+  </body>
+</html>
