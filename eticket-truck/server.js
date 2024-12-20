@@ -17,7 +17,7 @@ const channel = {
 // Phoenix socket configuration
 const fromDid = 'did:web:venus.node.layr8.org:truck-1';
 const scaleHouse = 'did:web:earth.node.layr8.org:truckit-airticket-1';
-const api_key = 'pacedemo_48IcsMKZ_H2v3zrR2QcuLjYgjuzCrlKkI';
+const api_key = '';
 
 // Message types
 const PAYLOAD_TYPE = 'http://protocoltech.io/eticketing/material-pickup/1.0';
