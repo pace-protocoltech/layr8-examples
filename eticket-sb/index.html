@@ -352,6 +352,7 @@
             throw new Error('Lookup failed');
           }
           const data = await response.json();
+          console.log(data);
 
           document.getElementById('host').value = data.host;
           document.getElementById('myDid').value = data.did;
