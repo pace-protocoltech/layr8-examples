@@ -83,6 +83,18 @@
         border-bottom: 1px solid #ddd;
       }
 
+      .recipients-list {
+        font-size: 0.9em;
+        color: #5f6368;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .recipients-list li {
+        margin: 2px 0;
+      }
+
       .messages-table th {
         background-color: #f8f9fa;
         font-weight: bold;
@@ -260,6 +272,7 @@
               <th>Material</th>
               <th>Weight</th>
               <th>Time</th>
+              <th>Other Recipients</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -383,6 +396,7 @@
               message.sender,
               message.material,
               message.weight,
+              message.otherRecipients || [],
               message.id
             );
           } else if (message.type === 'error') {
@@ -414,15 +428,34 @@
         }
       }
 
-      function addMessage(sender, material, weight, messageId) {
+      function addMessage(
+        sender,
+        material,
+        weight,
+        otherRecipients,
+        messageId
+      ) {
         const row = document.createElement('tr');
         const timestamp = new Date().toLocaleTimeString();
+
+        // Format other recipients for display
+        let recipientsHtml = 'None';
+        if (otherRecipients && otherRecipients.length > 0) {
+          recipientsHtml = '<ul class="recipients-list">';
+          otherRecipients.forEach((recipient) => {
+            // Show shortened DID for readability
+            const shortDid = recipient.split(':').pop();
+            recipientsHtml += `<li title="${recipient}">${shortDid}</li>`;
+          });
+          recipientsHtml += '</ul>';
+        }
 
         row.innerHTML = `
           <td>${sender}</td>
           <td>${material}</td>
           <td>${weight}</td>
           <td>${timestamp}</td>
+          <td>${recipientsHtml}</td>
           <td>
             <button 
               class="verify-button" 
@@ -444,15 +477,24 @@
       }
 
       function verifyDelivery(messageId) {
+        const button = document.getElementById(`verify-${messageId}`);
+        button.disabled = true;
+        button.textContent = 'Verifying...';
+
         fetch(`/verify/${messageId}`, {
           method: 'POST',
         })
           .then((response) => response.json())
           .then((data) => {
             if (data.status === 'success') {
-              const button = document.getElementById(`verify-${messageId}`);
               button.classList.add('verified');
-              button.textContent = 'Verified';
+              if (data.details) {
+                const total = data.details.successful + data.details.failed;
+                button.textContent = `Verified (${data.details.successful}/${total})`;
+                button.title = `Sent to ${total} recipients: ${data.details.successful} successful, ${data.details.failed} failed`;
+              } else {
+                button.textContent = 'Verified';
+              }
               button.disabled = true;
             } else {
               throw new Error(data.message || 'Verification failed');
@@ -461,6 +503,8 @@
           .catch((error) => {
             console.error('Error verifying message:', error);
             alert(error.message || 'Failed to verify message');
+            button.disabled = false;
+            button.textContent = 'Verify Delivery';
           });
       }
 
