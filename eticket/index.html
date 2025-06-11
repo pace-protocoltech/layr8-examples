@@ -38,7 +38,8 @@
         color: #5f6368;
       }
 
-      input {
+      input,
+      select {
         width: 100%;
         padding: 8px;
         margin: 8px 0;
@@ -47,10 +48,16 @@
         box-sizing: border-box;
       }
 
-      input:focus {
+      input:focus,
+      select:focus {
         outline: none;
         border-color: #1a73e8;
         box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+      }
+
+      select {
+        background-color: white;
+        cursor: pointer;
       }
 
       .messages-container {
@@ -217,11 +224,14 @@
       </div>
       <div class="input-group">
         <label for="myDid">DID</label>
-        <input
-          type="text"
-          id="myDid"
-          value="did:web:venus.node.layr8.io:demo-contractor-1"
-        />
+        <select id="myDid">
+          <option value="did:web:venus.node.layr8.io:demo-contractor-1">
+            Contractor 1 (did:web:venus.node.layr8.io:demo-contractor-1)
+          </option>
+          <option value="did:web:venus.node.layr8.io:demo-trucker-1">
+            Trucker 1 (did:web:venus.node.layr8.io:demo-trucker-1)
+          </option>
+        </select>
       </div>
       <div class="input-group">
         <label for="apiKey">API Key</label>
