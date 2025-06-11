@@ -64,8 +64,25 @@ function connectToLayr8(config) {
 
       send_acks(channel, [id]);
 
-      messageAddressMap.set(id, from);
-      console.log(`Stored return address ${from} for message ${id}`);
+      // Parse the ticket content from the body
+      let ticketData = null;
+      try {
+        if (body && body.content) {
+          ticketData = JSON.parse(body.content);
+        }
+      } catch (error) {
+        console.error('Error parsing ticket content:', error);
+      }
+
+      // Store the return address AND other recipients
+      const messageInfo = {
+        from: from,
+        otherRecipients: ticketData?.otherRecipients || [],
+      };
+      messageAddressMap.set(id, messageInfo);
+      console.log(
+        `Stored return address ${from} and ${messageInfo.otherRecipients.length} other recipients for message ${id}`
+      );
 
       // Safely extract sender label with fallback
       let senderLabel = 'Unknown Sender';
@@ -83,15 +100,6 @@ function connectToLayr8(config) {
       } catch (error) {
         console.error('Error extracting sender label:', error);
       }
-      // Parse the ticket content from the body
-      let ticketData = null;
-      try {
-        if (body && body.content) {
-          ticketData = JSON.parse(body.content);
-        }
-      } catch (error) {
-        console.error('Error parsing ticket content:', error);
-      }
 
       // Extract material and net weight
       const material = ticketData?.material || 'Unknown Material';
@@ -105,6 +113,7 @@ function connectToLayr8(config) {
               sender: senderLabel,
               material: material,
               weight: netWeight,
+              otherRecipients: messageInfo.otherRecipients,
               id: id,
             })
           );
@@ -222,9 +231,9 @@ const server = http.createServer((req, res) => {
   } else if (req.url.startsWith('/verify/')) {
     if (req.method === 'POST') {
       const messageId = req.url.split('/')[2];
-      const returnAddress = messageAddressMap.get(messageId);
+      const messageInfo = messageAddressMap.get(messageId);
 
-      if (!returnAddress) {
+      if (!messageInfo) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -235,35 +244,85 @@ const server = http.createServer((req, res) => {
         return;
       }
 
-      const verificationMessage = {
-        type: `${BASIC_MESSAGE}/verify`,
-        id: randomUUID(),
-        from: config.myDid,
-        to: [returnAddress],
-        body: {
-          verifiedMessageId: messageId,
-          status: 'verified',
-          timestamp: new Date().toISOString(),
-        },
-      };
+      // Create list of all recipients (original sender + other recipients)
+      const allRecipients = [messageInfo.from, ...messageInfo.otherRecipients];
 
-      console.log('Sending verification:', verificationMessage);
+      // Remove duplicates
+      const uniqueRecipients = [...new Set(allRecipients)];
 
-      layr8Channel
-        .push('message', verificationMessage)
-        .receive('ok', () => {
-          console.log('Verification sent successfully');
-          messageAddressMap.delete(messageId);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ status: 'success' }));
+      console.log(
+        `Sending verification to ${uniqueRecipients.length} recipients:`,
+        uniqueRecipients
+      );
+
+      // Send verification to all recipients
+      const verificationPromises = uniqueRecipients.map((recipient) => {
+        const verificationMessage = {
+          type: `${BASIC_MESSAGE}/verify`,
+          id: randomUUID(),
+          from: config.myDid,
+          to: [recipient],
+          body: {
+            verifiedMessageId: messageId,
+            status: 'verified',
+            timestamp: new Date().toISOString(),
+          },
+        };
+
+        console.log(`Sending verification to ${recipient}`);
+
+        return new Promise((resolve, reject) => {
+          layr8Channel
+            .push('message', verificationMessage)
+            .receive('ok', () => {
+              console.log(`Verification sent successfully to ${recipient}`);
+              resolve({ recipient, success: true });
+            })
+            .receive('error', (resp) => {
+              console.log(`Verification failed for ${recipient}:`, resp);
+              resolve({ recipient, success: false, error: resp });
+            });
+        });
+      });
+
+      // Wait for all verifications to complete
+      Promise.all(verificationPromises)
+        .then((results) => {
+          const successful = results.filter((r) => r.success).length;
+          const failed = results.filter((r) => !r.success).length;
+
+          if (successful > 0) {
+            messageAddressMap.delete(messageId);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                status: 'success',
+                details: {
+                  successful,
+                  failed,
+                  recipients: results,
+                },
+              })
+            );
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                status: 'error',
+                message: 'All verifications failed',
+                details: results,
+              })
+            );
+          }
         })
-        .receive('error', (resp) => {
-          console.log('Verification failed:', resp);
+        .catch((error) => {
+          console.error('Error sending verifications:', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(
             JSON.stringify({
               status: 'error',
-              message: 'Failed to send verification',
+              message: 'Failed to send verifications',
+              error: error.message,
             })
           );
         });
@@ -271,9 +330,6 @@ const server = http.createServer((req, res) => {
       res.writeHead(405, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Method not allowed' }));
     }
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
   }
 });
 
