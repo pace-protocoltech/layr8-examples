@@ -213,19 +213,23 @@
       <div id="error-message" class="error-message"></div>
       <div class="input-group">
         <label for="host">Host</label>
-        <input type="text" id="host" placeholder="Enter host address" />
+        <input type="text" id="host" value="venus.node.layr8.io" />
       </div>
       <div class="input-group">
         <label for="myDid">DID</label>
         <input
           type="text"
           id="myDid"
-          placeholder="Enter your DID to connect to"
+          value="did:web:venus.node.layr8.io:demo-contractor-1"
         />
       </div>
       <div class="input-group">
         <label for="apiKey">API Key</label>
-        <input type="password" id="apiKey" placeholder="Enter API key" />
+        <input
+          type="password"
+          id="apiKey"
+          value="chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V"
+        />
       </div>
       <button id="connect-button" onclick="saveConfig()">
         Connect to Layr8
