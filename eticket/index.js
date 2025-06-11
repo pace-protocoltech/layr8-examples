@@ -60,11 +60,7 @@ function connectToLayr8(config) {
     console.log(JSON.stringify(message.context, null, 4));
 
     if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
-      const {
-        from,
-        body: { material, weight },
-        id,
-      } = message.plaintext;
+      const { from, body, id } = message.plaintext;
 
       send_acks(channel, [id]);
 
@@ -87,6 +83,19 @@ function connectToLayr8(config) {
       } catch (error) {
         console.error('Error extracting sender label:', error);
       }
+      // Parse the ticket content from the body
+      let ticketData = null;
+      try {
+        if (body && body.content) {
+          ticketData = JSON.parse(body.content);
+        }
+      } catch (error) {
+        console.error('Error parsing ticket content:', error);
+      }
+
+      // Extract material and net weight
+      const material = ticketData?.material || 'Unknown Material';
+      const netWeight = ticketData?.weights?.net || 0;
 
       wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
@@ -95,7 +104,7 @@ function connectToLayr8(config) {
               type: 'message',
               sender: senderLabel,
               material: material,
-              weight: weight,
+              weight: netWeight,
               id: id,
             })
           );
