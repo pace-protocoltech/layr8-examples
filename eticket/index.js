@@ -9,7 +9,7 @@ let config = {
   host: null,
   myDid: null,
   apiKey: null,
-  scheme: 'wss'
+  scheme: 'wss',
 };
 
 // Protocols supported
@@ -55,59 +55,66 @@ function connectToLayr8(config) {
     payload_types: [BASIC_MESSAGE, TRUST_PING],
   });
 
+  // Define the message handler function separately so we can properly remove it
+  const messageHandler = (message) => {
+    console.log(JSON.stringify(message.context, null, 4));
+
+    if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
+      const {
+        from,
+        body: { material, weight },
+        id,
+      } = message.plaintext;
+
+      send_acks(channel, [id]);
+
+      messageAddressMap.set(id, from);
+      console.log(`Stored return address ${from} for message ${id}`);
+
+      // Safely extract sender label with fallback
+      let senderLabel = 'Unknown Sender';
+      try {
+        if (
+          message.context &&
+          message.context.sender_credentials &&
+          message.context.sender_credentials[0] &&
+          message.context.sender_credentials[0].credentialSubject &&
+          message.context.sender_credentials[0].credentialSubject.label
+        ) {
+          senderLabel =
+            message.context.sender_credentials[0].credentialSubject.label;
+        }
+      } catch (error) {
+        console.error('Error extracting sender label:', error);
+      }
+
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(
+            JSON.stringify({
+              type: 'message',
+              sender: senderLabel,
+              material: material,
+              weight: weight,
+              id: id,
+            })
+          );
+        }
+      });
+    }
+  };
+
   return new Promise((resolve, reject) => {
     channel
       .join(1000)
       .receive('ok', () => {
         console.log('Joined Layr8 channel');
 
-        // Set up channel message handler
-        channel.on('message', (message) => {
-  console.log(JSON.stringify(message.context, null, 4));
+        // Remove any existing message handlers before adding new one
+        channel.off('message');
 
-  if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
-    const {
-      from,
-      body: { material, weight },
-      id,
-    } = message.plaintext;
-
-    send_acks(channel, [id]);
-
-    messageAddressMap.set(id, from);
-    console.log(`Stored return address ${from} for message ${id}`);
-
-    // Safely extract sender label with fallback
-    let senderLabel = 'Unknown Sender';
-    try {
-      if (
-        message.context &&
-        message.context.sender_credentials &&
-        message.context.sender_credentials[0] &&
-        message.context.sender_credentials[0].credentialSubject &&
-        message.context.sender_credentials[0].credentialSubject.label
-      ) {
-        senderLabel = message.context.sender_credentials[0].credentialSubject.label;
-      }
-    } catch (error) {
-      console.error('Error extracting sender label:', error);
-    }
-
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(
-          JSON.stringify({
-            type: 'message',
-            sender: senderLabel,
-            material: material,
-            weight: weight,
-            id: id,
-          })
-        );
-      }
-    });
-  }
-});
+        // Now add the message handler
+        channel.on('message', messageHandler);
 
         resolve(channel);
       })
@@ -161,7 +168,9 @@ const server = http.createServer((req, res) => {
         config = { ...config, ...newConfig };
 
         if (layr8Channel) {
+          layr8Channel.off('message');
           layr8Channel.leave();
+          layr8Channel = null;
         }
 
         try {
