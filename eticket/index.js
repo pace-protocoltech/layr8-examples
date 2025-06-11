@@ -63,37 +63,51 @@ function connectToLayr8(config) {
 
         // Set up channel message handler
         channel.on('message', (message) => {
-          console.log(JSON.stringify(message.context, null, 4));
+  console.log(JSON.stringify(message.context, null, 4));
 
-          if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
-            const {
-              from,
-              body: { material, weight },
-              id,
-            } = message.plaintext;
+  if (message.plaintext.type === `${BASIC_MESSAGE}/message`) {
+    const {
+      from,
+      body: { material, weight },
+      id,
+    } = message.plaintext;
 
-            send_acks(channel, [id]);
+    send_acks(channel, [id]);
 
-            messageAddressMap.set(id, from);
-            console.log(`Stored return address ${from} for message ${id}`);
+    messageAddressMap.set(id, from);
+    console.log(`Stored return address ${from} for message ${id}`);
 
-            wss.clients.forEach((client) => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(
-                  JSON.stringify({
-                    type: 'message',
-                    sender:
-                      message.context.sender_credentials[0].credentialSubject
-                        .label,
-                    material: material,
-                    weight: weight,
-                    id: id,
-                  })
-                );
-              }
-            });
-          }
-        });
+    // Safely extract sender label with fallback
+    let senderLabel = 'Unknown Sender';
+    try {
+      if (
+        message.context &&
+        message.context.sender_credentials &&
+        message.context.sender_credentials[0] &&
+        message.context.sender_credentials[0].credentialSubject &&
+        message.context.sender_credentials[0].credentialSubject.label
+      ) {
+        senderLabel = message.context.sender_credentials[0].credentialSubject.label;
+      }
+    } catch (error) {
+      console.error('Error extracting sender label:', error);
+    }
+
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: 'message',
+            sender: senderLabel,
+            material: material,
+            weight: weight,
+            id: id,
+          })
+        );
+      }
+    });
+  }
+});
 
         resolve(channel);
       })
