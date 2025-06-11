@@ -9,8 +9,7 @@ let config = {
   host: null,
   myDid: null,
   apiKey: null,
-  scheme: 'wss',
-  port: '4000',
+  scheme: 'wss'
 };
 
 // Protocols supported
@@ -40,7 +39,7 @@ function connectToLayr8(config) {
       );
   };
 
-  const url = `${config.scheme}://${config.host}:${config.port}/plugin_socket`;
+  const url = `${config.scheme}://${config.host}/plugin_socket`;
   const socket = new Socket(url, {
     timeout: 1000,
     params: { api_key: config.apiKey },
