@@ -101,8 +101,9 @@
       }
 
       .verified-recipient::after {
-        content: ' ✓';
+        content: ' \2713';
         color: #34a853;
+        font-weight: bold;
       }
 
       .messages-table th {
@@ -127,15 +128,19 @@
         display: block;
       }
 
-      .input-area {
-        display: grid;
-        grid-template-columns: 1fr 1fr 100px;
-        gap: 10px;
+      .control-area {
+        display: flex;
+        justify-content: flex-end;
         margin-top: 20px;
       }
 
-      .input-area input {
-        margin: 0;
+      .disconnect-button {
+        background-color: #d93025;
+        padding: 10px 20px;
+      }
+
+      .disconnect-button:hover {
+        background-color: #b71c1c;
       }
 
       button {
@@ -290,15 +295,10 @@
         </table>
       </div>
 
-      <div class="input-area">
-        <input
-          type="text"
-          id="recipient-did"
-          placeholder="Enter recipient's DID"
-        />
-        <input type="text" id="material-input" placeholder="Enter material" />
-        <input type="text" id="weight-input" placeholder="Enter weight" />
-        <button onclick="sendMessage()">Send</button>
+      <div class="control-area">
+        <button class="disconnect-button" onclick="disconnect()">
+          Disconnect
+        </button>
       </div>
     </div>
 
@@ -307,11 +307,6 @@
       const connectButton = document.getElementById('connect-button');
       const loadingSpinner = document.getElementById('loading-spinner');
       const errorMessage = document.getElementById('error-message');
-
-      function createSafeId(did) {
-        // Replace special characters that might cause issues in IDs
-        return did.replace(/[.:]/g, '-');
-      }
 
       function showError(message) {
         errorMessage.textContent = message;
@@ -363,16 +358,8 @@
             if (data.status === 'success') {
               connectWebSocket();
             } else {
-              let errorMsg = data.message || 'Failed to save configuration';
-              if (errorMsg.includes('e.connect.plugin.failed')) {
-                const match = errorMsg.match(/\[{:error, :([^}]+)}\]/);
-                if (match) {
-                  errorMsg = `Connection failed: ${match[1].replace(
-                    /_/g,
-                    ' '
-                  )}`;
-                }
-              }
+              // Use the user-friendly error message from the server
+              const errorMsg = data.message || 'Failed to save configuration';
               throw new Error(errorMsg);
             }
           })
@@ -406,6 +393,8 @@
 
         ws.onmessage = (event) => {
           const message = JSON.parse(event.data);
+          console.log('WebSocket message received:', message);
+
           if (message.type === 'message') {
             addMessage(
               message.sender,
@@ -415,6 +404,7 @@
               message.id
             );
           } else if (message.type === 'verificationUpdate') {
+            console.log('Verification update received:', message);
             updateVerificationStatus(message.messageId, message.verifier);
           } else if (message.type === 'error') {
             alert(message.message);
@@ -463,62 +453,42 @@
           otherRecipients.forEach((recipient) => {
             // Show shortened DID for readability
             const shortDid = recipient.split(':').pop();
-            const safeRecipientId = createSafeId(recipient);
-            recipientsHtml += `<li id="recipient-${messageId}-${safeRecipientId}" data-did="${recipient}" title="${recipient}">${shortDid}</li>`;
+            recipientsHtml += `<li id="recipient-${messageId}-${recipient}" title="${recipient}">${shortDid}</li>`;
           });
           recipientsHtml += '</ul>';
         }
 
         row.innerHTML = `
-    <td>${sender}</td>
-    <td>${material}</td>
-    <td>${weight}</td>
-    <td>${timestamp}</td>
-    <td>${recipientsHtml}</td>
-    <td>
-      <button 
-        class="verify-button" 
-        onclick="verifyDelivery('${messageId}')" 
-        id="verify-${messageId}"
-      >
-        Verify Delivery
-      </button>
-    </td>
-  `;
+          <td>${sender}</td>
+          <td>${material}</td>
+          <td>${weight}</td>
+          <td>${timestamp}</td>
+          <td>${recipientsHtml}</td>
+          <td>
+            <button 
+              class="verify-button" 
+              onclick="verifyDelivery('${messageId}')" 
+              id="verify-${messageId}"
+            >
+              Verify Delivery
+            </button>
+          </td>
+        `;
 
         document.getElementById('messages').appendChild(row);
         scrollToBottom();
       }
 
       function updateVerificationStatus(messageId, verifierDid) {
-        console.log(
-          `Updating verification status for ${verifierDid} on message ${messageId}`
-        );
-
-        // Try to find the element using the safe ID
-        const safeVerifierId = createSafeId(verifierDid);
+        // Update the specific recipient in the list to show they verified
         const recipientElement = document.getElementById(
-          `recipient-${messageId}-${safeVerifierId}`
+          `recipient-${messageId}-${verifierDid}`
         );
-
         if (recipientElement) {
           recipientElement.classList.add('verified-recipient');
           console.log(
-            `Successfully updated verification status for ${verifierDid}`
+            `Updated verification status for ${verifierDid} on message ${messageId}`
           );
-        } else {
-          // If not found by ID, try to find by data attribute
-          const allRecipients = document.querySelectorAll(
-            `#message-row-${messageId} .recipients-list li`
-          );
-          allRecipients.forEach((el) => {
-            if (el.getAttribute('data-did') === verifierDid) {
-              el.classList.add('verified-recipient');
-              console.log(
-                `Successfully updated verification status for ${verifierDid} using data attribute`
-              );
-            }
-          });
         }
       }
 
@@ -559,35 +529,27 @@
           });
       }
 
-      function sendMessage() {
-        const recipientDid = document
-          .getElementById('recipient-did')
-          .value.trim();
-        const material = document.getElementById('material-input').value.trim();
-        const weight = document.getElementById('weight-input').value.trim();
-
-        if (!recipientDid || !material || !weight) {
-          alert('Please fill in all fields');
-          return;
+      function disconnect() {
+        if (ws) {
+          ws.close();
         }
 
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          alert('Not connected to server');
-          return;
-        }
+        // Reset the UI
+        updateConnectionStatus(false);
+        document.getElementById('messages').innerHTML = '';
 
-        ws.send(
-          JSON.stringify({
-            type: 'chat',
-            to: recipientDid,
-            material: material,
-            weight: weight,
-          })
-        );
+        // Clear the configuration form
+        document.getElementById('host').value = 'venus.node.layr8.io';
+        document.getElementById('myDid').value = '';
+        document.getElementById('apiKey').value =
+          'chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V';
 
-        // Clear inputs after sending
-        document.getElementById('material-input').value = '';
-        document.getElementById('weight-input').value = '';
+        // Notify the server to disconnect from Layr8
+        fetch('/disconnect', {
+          method: 'POST',
+        }).catch((error) => {
+          console.error('Error disconnecting:', error);
+        });
       }
 
       // Check configuration on page load
@@ -604,15 +566,6 @@
         .catch((error) => {
           console.error('Error fetching config:', error);
         });
-
-      // Add event listeners for Enter key
-      ['recipient-did', 'material-input', 'weight-input'].forEach((id) => {
-        document.getElementById(id).addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') {
-            sendMessage();
-          }
-        });
-      });
     </script>
   </body>
 </html>
