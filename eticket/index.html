@@ -269,7 +269,7 @@
         />
       </div>
       <button id="connect-button" onclick="saveConfig()">
-        Connect to Layr8
+        <span id="button-text">Connect to Layr8</span>
         <span id="loading-spinner" class="spinner"></span>
       </button>
     </div>
@@ -304,30 +304,36 @@
 
     <script>
       let ws;
-      const connectButton = document.getElementById('connect-button');
-      const loadingSpinner = document.getElementById('loading-spinner');
-      const errorMessage = document.getElementById('error-message');
 
       function showError(message) {
+        const errorMessage = document.getElementById('error-message');
+        const connectButton = document.getElementById('connect-button');
+
         errorMessage.textContent = message;
         errorMessage.classList.add('visible');
         connectButton.disabled = false;
-        loadingSpinner.classList.remove('connecting');
+        setLoading(false);
       }
 
       function clearError() {
+        const errorMessage = document.getElementById('error-message');
         errorMessage.textContent = '';
         errorMessage.classList.remove('visible');
       }
 
       function setLoading(isLoading) {
+        const connectButton = document.getElementById('connect-button');
+        const buttonText = document.getElementById('button-text');
+        const spinner = document.getElementById('loading-spinner');
+
         connectButton.disabled = isLoading;
+
         if (isLoading) {
-          loadingSpinner.classList.add('connecting');
-          connectButton.textContent = 'Connecting...';
+          buttonText.textContent = 'Connecting...';
+          spinner.classList.add('connecting');
         } else {
-          loadingSpinner.classList.remove('connecting');
-          connectButton.textContent = 'Connect to Layr8';
+          buttonText.textContent = 'Connect to Layr8';
+          spinner.classList.remove('connecting');
         }
       }
 
@@ -539,10 +545,9 @@
         document.getElementById('messages').innerHTML = '';
 
         // Clear the configuration form
-        document.getElementById('host').value = 'venus.node.layr8.io';
+        document.getElementById('host').value = '';
         document.getElementById('myDid').value = '';
-        document.getElementById('apiKey').value =
-          'chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V';
+        document.getElementById('apiKey').value = '';
 
         // Notify the server to disconnect from Layr8
         fetch('/disconnect', {
