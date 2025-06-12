@@ -18,6 +18,8 @@ const TRUST_PING = 'https://didcomm.org/trust-ping/2.0';
 
 // Store message ID to return address mapping
 const messageAddressMap = new Map();
+const verificationStatusMap = new Map();
+const recipientMessageIdMap = new Map();
 
 // Store Layr8 channel reference
 let layr8Channel = null;
@@ -30,10 +32,8 @@ function connectToLayr8(config) {
   }
 
   const send_acks = (channel, ids) => {
-    //console.log("\nSending acks...");
     channel
       .push('ack', { ids: ids }, 10000)
-      //.receive("ok", () => console.log("Acks sent successfully"))
       .receive('error', (error) =>
         console.log('\nError sending acks:', error.reason)
       );
@@ -55,7 +55,7 @@ function connectToLayr8(config) {
     payload_types: [BASIC_MESSAGE, TRUST_PING],
   });
 
-  // Define the message handler function separately so we can properly remove it
+  // Define the message handler function
   const messageHandler = (message) => {
     console.log(JSON.stringify(message.context, null, 4));
 
@@ -69,26 +69,46 @@ function connectToLayr8(config) {
       try {
         if (body && body.content) {
           ticketData = JSON.parse(body.content);
+          console.log('Parsed ticket data:', ticketData);
         }
       } catch (error) {
         console.error('Error parsing ticket content:', error);
       }
 
       // Store the return address AND recipients
-      // Filter out ourselves from the recipients list to get "other" recipients
       const allRecipients = ticketData?.recipients || [];
       const otherRecipients = allRecipients.filter(
         (did) => did !== config.myDid && did !== from
       );
+
       const messageInfo = {
         from: from,
         recipients: ticketData?.recipients || [],
         otherRecipients: otherRecipients,
+        recipientMessageIds: ticketData?.recipient_message_ids || {},
       };
-
       messageAddressMap.set(id, messageInfo);
+
+      // Map all recipient message IDs to our message ID
+      if (ticketData?.recipient_message_ids) {
+        Object.entries(ticketData.recipient_message_ids).forEach(
+          ([recipientDid, recipientMsgId]) => {
+            recipientMessageIdMap.set(recipientMsgId, {
+              ourMessageId: id,
+              recipientDid: recipientDid,
+            });
+            console.log(
+              `Mapped recipient message ID ${recipientMsgId} for ${recipientDid} to our message ${id}`
+            );
+          }
+        );
+      }
+
+      // Initialize verification status for this message
+      verificationStatusMap.set(id, new Map());
+
       console.log(
-        `Stored return address ${from} and ${messageInfo.otherRecipients.length} other recipients for message ${id}`
+        `Stored return address ${from} and ${otherRecipients.length} other recipients for message ${id}`
       );
 
       // Safely extract sender label with fallback
@@ -108,7 +128,6 @@ function connectToLayr8(config) {
         console.error('Error extracting sender label:', error);
       }
 
-      console.log(ticketData);
       // Extract material and net weight
       const material = ticketData?.material || 'Unknown Material';
       const netWeight = ticketData?.weights?.net || 0;
@@ -123,11 +142,63 @@ function connectToLayr8(config) {
               weight: netWeight,
               otherRecipients: otherRecipients,
               allRecipients: allRecipients,
+              recipientMessageIds: ticketData?.recipient_message_ids || {},
               id: id,
             })
           );
         }
       });
+    } else if (message.plaintext.type === `${BASIC_MESSAGE}/verify`) {
+      // Handle incoming verification messages
+      const { from, body, id } = message.plaintext;
+      const verifiedMessageId = body?.verifiedMessageId;
+
+      send_acks(channel, [id]);
+
+      console.log(
+        `Received verification from ${from} for message ${verifiedMessageId}`
+      );
+
+      // Check if this verification is for a recipient's message ID
+      const recipientInfo = recipientMessageIdMap.get(verifiedMessageId);
+      let actualMessageId = verifiedMessageId;
+
+      if (recipientInfo) {
+        actualMessageId = recipientInfo.ourMessageId;
+        console.log(
+          `Verification is for recipient message ${verifiedMessageId}, mapping to our message ${actualMessageId}`
+        );
+      }
+
+      // Update verification status
+      const verificationStatus = verificationStatusMap.get(actualMessageId);
+      if (verificationStatus) {
+        verificationStatus.set(from, {
+          verified: true,
+          timestamp: body?.timestamp || new Date().toISOString(),
+        });
+
+        // Notify all WebSocket clients of the verification update
+        console.log(
+          `Broadcasting verification update to ${wss.clients.size} WebSocket clients`
+        );
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            const updateMessage = {
+              type: 'verificationUpdate',
+              messageId: actualMessageId,
+              verifier: from,
+              timestamp: body?.timestamp,
+            };
+            console.log('Sending verification update:', updateMessage);
+            client.send(JSON.stringify(updateMessage));
+          }
+        });
+      } else {
+        console.log(
+          `No verification status map found for message ${actualMessageId}`
+        );
+      }
     }
   };
 
@@ -157,7 +228,6 @@ function connectToLayr8(config) {
       });
   });
 }
-
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -254,7 +324,6 @@ const server = http.createServer((req, res) => {
       }
 
       // Use all recipients from the original message
-      // This includes everyone who was listed in the recipients field
       let allRecipients = [...messageInfo.recipients];
 
       // Also include the original sender if not already in the list
@@ -275,19 +344,34 @@ const server = http.createServer((req, res) => {
 
       // Send verification to all recipients
       const verificationPromises = uniqueRecipients.map((recipient) => {
+        // Use the recipient's specific message ID if available
+        let messageIdToVerify = messageId; // default to our message ID
+
+        if (
+          messageInfo.recipientMessageIds &&
+          messageInfo.recipientMessageIds[recipient]
+        ) {
+          messageIdToVerify = messageInfo.recipientMessageIds[recipient];
+          console.log(
+            `Using recipient-specific message ID ${messageIdToVerify} for ${recipient}`
+          );
+        }
+
         const verificationMessage = {
           type: `${BASIC_MESSAGE}/verify`,
           id: randomUUID(),
           from: config.myDid,
           to: [recipient],
           body: {
-            verifiedMessageId: messageId,
+            verifiedMessageId: messageIdToVerify,
             status: 'verified',
             timestamp: new Date().toISOString(),
           },
         };
 
-        console.log(`Sending verification to ${recipient}`);
+        console.log(
+          `Sending verification to ${recipient} for message ${messageIdToVerify}`
+        );
 
         return new Promise((resolve, reject) => {
           layr8Channel
@@ -310,7 +394,7 @@ const server = http.createServer((req, res) => {
           const failed = results.filter((r) => !r.success).length;
 
           if (successful > 0) {
-            messageAddressMap.delete(messageId);
+            // Don't delete the message info yet as we might receive more verifications
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(
               JSON.stringify({
