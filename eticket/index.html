@@ -95,6 +95,16 @@
         margin: 2px 0;
       }
 
+      .verified-recipient {
+        color: #137333;
+        font-weight: 500;
+      }
+
+      .verified-recipient::after {
+        content: ' ✓';
+        color: #34a853;
+      }
+
       .messages-table th {
         background-color: #f8f9fa;
         font-weight: bold;
@@ -298,6 +308,11 @@
       const loadingSpinner = document.getElementById('loading-spinner');
       const errorMessage = document.getElementById('error-message');
 
+      function createSafeId(did) {
+        // Replace special characters that might cause issues in IDs
+        return did.replace(/[.:]/g, '-');
+      }
+
       function showError(message) {
         errorMessage.textContent = message;
         errorMessage.classList.add('visible');
@@ -399,6 +414,8 @@
               message.otherRecipients || [],
               message.id
             );
+          } else if (message.type === 'verificationUpdate') {
+            updateVerificationStatus(message.messageId, message.verifier);
           } else if (message.type === 'error') {
             alert(message.message);
           } else if (message.type === 'connectionStatus') {
@@ -436,6 +453,7 @@
         messageId
       ) {
         const row = document.createElement('tr');
+        row.id = `message-row-${messageId}`;
         const timestamp = new Date().toLocaleTimeString();
 
         // Format other recipients for display
@@ -445,30 +463,63 @@
           otherRecipients.forEach((recipient) => {
             // Show shortened DID for readability
             const shortDid = recipient.split(':').pop();
-            recipientsHtml += `<li title="${recipient}">${shortDid}</li>`;
+            const safeRecipientId = createSafeId(recipient);
+            recipientsHtml += `<li id="recipient-${messageId}-${safeRecipientId}" data-did="${recipient}" title="${recipient}">${shortDid}</li>`;
           });
           recipientsHtml += '</ul>';
         }
 
         row.innerHTML = `
-          <td>${sender}</td>
-          <td>${material}</td>
-          <td>${weight}</td>
-          <td>${timestamp}</td>
-          <td>${recipientsHtml}</td>
-          <td>
-            <button 
-              class="verify-button" 
-              onclick="verifyDelivery('${messageId}')" 
-              id="verify-${messageId}"
-            >
-              Verify Delivery
-            </button>
-          </td>
-        `;
+    <td>${sender}</td>
+    <td>${material}</td>
+    <td>${weight}</td>
+    <td>${timestamp}</td>
+    <td>${recipientsHtml}</td>
+    <td>
+      <button 
+        class="verify-button" 
+        onclick="verifyDelivery('${messageId}')" 
+        id="verify-${messageId}"
+      >
+        Verify Delivery
+      </button>
+    </td>
+  `;
 
         document.getElementById('messages').appendChild(row);
         scrollToBottom();
+      }
+
+      function updateVerificationStatus(messageId, verifierDid) {
+        console.log(
+          `Updating verification status for ${verifierDid} on message ${messageId}`
+        );
+
+        // Try to find the element using the safe ID
+        const safeVerifierId = createSafeId(verifierDid);
+        const recipientElement = document.getElementById(
+          `recipient-${messageId}-${safeVerifierId}`
+        );
+
+        if (recipientElement) {
+          recipientElement.classList.add('verified-recipient');
+          console.log(
+            `Successfully updated verification status for ${verifierDid}`
+          );
+        } else {
+          // If not found by ID, try to find by data attribute
+          const allRecipients = document.querySelectorAll(
+            `#message-row-${messageId} .recipients-list li`
+          );
+          allRecipients.forEach((el) => {
+            if (el.getAttribute('data-did') === verifierDid) {
+              el.classList.add('verified-recipient');
+              console.log(
+                `Successfully updated verification status for ${verifierDid} using data attribute`
+              );
+            }
+          });
+        }
       }
 
       function scrollToBottom() {
