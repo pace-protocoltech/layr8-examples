@@ -24,6 +24,47 @@ const recipientMessageIdMap = new Map();
 // Store Layr8 channel reference
 let layr8Channel = null;
 
+function parseLayr8Error(errorMessage) {
+  // Check for protocols_already_bound error
+  if (errorMessage.includes('protocols_already_bound')) {
+    const didMatch = errorMessage.match(/did:web:[^>]+/);
+    const did = didMatch ? didMatch[0] : 'this DID';
+    return `Another client is already connected with ${did}. Only one connection per DID is allowed. Please disconnect the other client first.`;
+  }
+
+  // Check for authentication errors
+  if (
+    errorMessage.includes('authentication_failed') ||
+    errorMessage.includes('invalid_api_key')
+  ) {
+    return 'Authentication failed. Please check your API key.';
+  }
+
+  // Check for connection errors
+  if (
+    errorMessage.includes('connection_refused') ||
+    errorMessage.includes('timeout')
+  ) {
+    return 'Unable to connect to the Layr8 server. Please check the host address and try again.';
+  }
+
+  // Check for invalid DID
+  if (
+    errorMessage.includes('invalid_did') ||
+    errorMessage.includes('did_not_found')
+  ) {
+    return 'Invalid DID. Please check that the DID is correctly formatted.';
+  }
+
+  // Generic plugin error
+  if (errorMessage.includes('e.connect.plugin.failed')) {
+    return 'Failed to connect to Layr8. Please check your configuration and try again.';
+  }
+
+  // Return original message if no specific case matches
+  return errorMessage;
+}
+
 // Connect to Layr8 server
 function connectToLayr8(config) {
   if (!config.host || !config.myDid || !config.apiKey) {
@@ -276,11 +317,17 @@ const server = http.createServer((req, res) => {
           res.end(JSON.stringify({ status: 'success' }));
         } catch (error) {
           console.error('Layr8 connection error:', error);
+
+          // Parse the error message to make it user-friendly
+          const userFriendlyError = parseLayr8Error(error.message);
+
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(
             JSON.stringify({
               status: 'error',
-              message: error.message,
+              message: userFriendlyError,
+              // Include original error for debugging if needed
+              technicalDetails: error.message,
             })
           );
         }
@@ -432,6 +479,31 @@ const server = http.createServer((req, res) => {
       res.writeHead(405, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Method not allowed' }));
     }
+  } else if (req.url === '/disconnect' && req.method === 'POST') {
+    if (layr8Channel) {
+      layr8Channel.off('message');
+      layr8Channel.leave();
+      layr8Channel = null;
+    }
+
+    // Clear all stored data
+    messageAddressMap.clear();
+    verificationStatusMap.clear();
+    recipientMessageIdMap.clear();
+
+    // Reset config
+    config = {
+      host: null,
+      myDid: null,
+      apiKey: null,
+      scheme: 'wss',
+    };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'success' }));
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
   }
 });
 
