@@ -545,9 +545,10 @@
         document.getElementById('messages').innerHTML = '';
 
         // Clear the configuration form
-        document.getElementById('host').value = '';
+        document.getElementById('host').value = 'venus.node.layr8.io';
         document.getElementById('myDid').value = '';
-        document.getElementById('apiKey').value = '';
+        document.getElementById('apiKey').value =
+          'chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V';
 
         // Notify the server to disconnect from Layr8
         fetch('/disconnect', {
