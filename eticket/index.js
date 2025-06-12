@@ -74,11 +74,18 @@ function connectToLayr8(config) {
         console.error('Error parsing ticket content:', error);
       }
 
-      // Store the return address AND other recipients
+      // Store the return address AND recipients
+      // Filter out ourselves from the recipients list to get "other" recipients
+      const allRecipients = ticketData?.recipients || [];
+      const otherRecipients = allRecipients.filter(
+        (did) => did !== config.myDid && did !== from
+      );
       const messageInfo = {
         from: from,
-        otherRecipients: ticketData?.otherRecipients || [],
+        recipients: ticketData?.recipients || [],
+        otherRecipients: otherRecipients,
       };
+
       messageAddressMap.set(id, messageInfo);
       console.log(
         `Stored return address ${from} and ${messageInfo.otherRecipients.length} other recipients for message ${id}`
@@ -101,6 +108,7 @@ function connectToLayr8(config) {
         console.error('Error extracting sender label:', error);
       }
 
+      console.log(ticketData);
       // Extract material and net weight
       const material = ticketData?.material || 'Unknown Material';
       const netWeight = ticketData?.weights?.net || 0;
@@ -113,7 +121,8 @@ function connectToLayr8(config) {
               sender: senderLabel,
               material: material,
               weight: netWeight,
-              otherRecipients: messageInfo.otherRecipients,
+              otherRecipients: otherRecipients,
+              allRecipients: allRecipients,
               id: id,
             })
           );
@@ -244,8 +253,17 @@ const server = http.createServer((req, res) => {
         return;
       }
 
-      // Create list of all recipients (original sender + other recipients)
-      const allRecipients = [messageInfo.from, ...messageInfo.otherRecipients];
+      // Use all recipients from the original message
+      // This includes everyone who was listed in the recipients field
+      let allRecipients = [...messageInfo.recipients];
+
+      // Also include the original sender if not already in the list
+      if (!allRecipients.includes(messageInfo.from)) {
+        allRecipients.push(messageInfo.from);
+      }
+
+      // Remove ourselves from the list
+      allRecipients = allRecipients.filter((did) => did !== config.myDid);
 
       // Remove duplicates
       const uniqueRecipients = [...new Set(allRecipients)];
