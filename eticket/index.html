@@ -116,6 +116,28 @@
         background-color: #f8f9fa;
       }
 
+      @keyframes slideIn {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+      }
+
       @keyframes flashRow {
         0% {
           background-color: #ffeb3b !important;
@@ -349,6 +371,48 @@
       .recipients-list li:hover {
         color: #1a73e8;
         text-decoration: underline;
+      }
+
+      .chat-history {
+        max-height: 200px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        display: none;
+      }
+
+      .chat-history:not(:empty) {
+        display: block;
+      }
+
+      .chat-message-item {
+        margin-bottom: 10px;
+        padding: 8px;
+        border-radius: 4px;
+      }
+
+      .chat-message-item.sent {
+        background-color: #e3f2fd;
+        text-align: right;
+      }
+
+      .chat-message-item.received {
+        background-color: #f5f5f5;
+        text-align: left;
+      }
+
+      .chat-message-time {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 4px;
+      }
+
+      .chat-message-from {
+        font-weight: bold;
+        color: #1a73e8;
+        margin-bottom: 4px;
       }
     </style>
   </head>
@@ -588,6 +652,8 @@
               message.otherRecipients || [],
               message.id
             );
+          } else if (message.type === 'chatMessage') {
+            handleIncomingChatMessage(message);
           } else if (message.type === 'verificationUpdate') {
             console.log('Verification update received:', message);
             updateVerificationStatus(message.messageId, message.verifier);
@@ -719,6 +785,152 @@
           });
       }
 
+      // Store chat history
+      const chatHistory = new Map();
+
+      function handleIncomingChatMessage(message) {
+        console.log('Received chat message:', message);
+
+        // Store the message in history
+        if (!chatHistory.has(message.from)) {
+          chatHistory.set(message.from, []);
+        }
+        chatHistory.get(message.from).push({
+          type: 'received',
+          message: message.message,
+          timestamp: message.timestamp,
+          fromLabel: message.fromLabel,
+        });
+
+        // Show notification
+        flashNotification(
+          `New message from ${message.fromLabel || message.from}`
+        );
+
+        // If modal is open for this sender, update it
+        if (currentChatRecipient === message.from) {
+          displayChatHistory();
+        }
+      }
+
+      function displayChatHistory() {
+        const historyDiv = document.getElementById('chat-history');
+        const messages = chatHistory.get(currentChatRecipient) || [];
+
+        if (messages.length === 0) {
+          historyDiv.innerHTML = '';
+          return;
+        }
+
+        historyDiv.innerHTML = messages
+          .map((msg) => {
+            const time = new Date(msg.timestamp).toLocaleTimeString();
+            if (msg.type === 'sent') {
+              return `
+        <div class="chat-message-item sent">
+          <div>${msg.message}</div>
+          <div class="chat-message-time">${time}</div>
+        </div>
+      `;
+            } else {
+              return `
+        <div class="chat-message-item received">
+          <div class="chat-message-from">${msg.fromLabel || 'Unknown'}</div>
+          <div>${msg.message}</div>
+          <div class="chat-message-time">${time}</div>
+        </div>
+      `;
+            }
+          })
+          .join('');
+
+        // Scroll to bottom
+        historyDiv.scrollTop = historyDiv.scrollHeight;
+      }
+
+      function flashNotification(text) {
+        // Create a temporary notification
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #1a73e8;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    z-index: 10000;
+    animation: slideIn 0.3s ease-out;
+  `;
+        notification.textContent = text;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          notification.style.animation = 'slideOut 0.3s ease-out';
+          setTimeout(() => notification.remove(), 300);
+        }, 3000);
+      }
+
+      // Update openChatModal to display history
+      function openChatModal(recipientDid, shortName) {
+        currentChatRecipient = recipientDid;
+        document.getElementById(
+          'modal-title'
+        ).textContent = `Chat with ${shortName}`;
+        document.getElementById('chat-message').value = '';
+        document.getElementById('chat-modal').style.display = 'block';
+
+        // Display chat history if any
+        displayChatHistory();
+
+        document.getElementById('chat-message').focus();
+      }
+
+      // Update sendChatMessage to store sent messages
+      function sendChatMessage() {
+        const message = document.getElementById('chat-message').value.trim();
+
+        if (!message) {
+          alert('Please enter a message');
+          return;
+        }
+
+        if (!currentChatRecipient) {
+          alert('No recipient selected');
+          return;
+        }
+
+        // Send the message via WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: 'chat',
+              to: currentChatRecipient,
+              message: message,
+            })
+          );
+
+          // Store sent message in history
+          if (!chatHistory.has(currentChatRecipient)) {
+            chatHistory.set(currentChatRecipient, []);
+          }
+          chatHistory.get(currentChatRecipient).push({
+            type: 'sent',
+            message: message,
+            timestamp: new Date().toISOString(),
+          });
+
+          // Update display
+          displayChatHistory();
+
+          // Clear input
+          document.getElementById('chat-message').value = '';
+        } else {
+          alert('Not connected to server');
+        }
+      }
+
       function flashRow(row) {
         let flashCount = 0;
         const maxFlashes = 6;
@@ -804,6 +1016,7 @@
           <span class="close" onclick="closeChatModal()">&times;</span>
         </div>
         <div class="modal-body">
+          <div id="chat-history" class="chat-history"></div>
           <textarea
             id="chat-message"
             placeholder="Type your message here..."
