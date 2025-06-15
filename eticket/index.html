@@ -518,6 +518,7 @@
           console.log(
             `Updated verification status for ${verifierDid} on message ${messageId}`
           );
+          flashElement(recipientElement, '#34a853');
         }
       }
 
@@ -570,6 +571,26 @@
 
           row.style.backgroundColor =
             flashCount % 2 === 0 ? '#ffeb3b' : '#ffffff';
+          flashCount++;
+          setTimeout(flash, 300);
+        };
+
+        flash();
+      }
+
+      function flashElement(element, color = '#34a853') {
+        let flashCount = 0;
+        const maxFlashes = 6;
+
+        const flash = () => {
+          if (flashCount >= maxFlashes) {
+            element.style.backgroundColor = '';
+            // Add the verified class after flashing
+            element.classList.add('verified-recipient');
+            return;
+          }
+
+          element.style.backgroundColor = flashCount % 2 === 0 ? color : '';
           flashCount++;
           setTimeout(flash, 300);
         };
