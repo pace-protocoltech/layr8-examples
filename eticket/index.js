@@ -119,7 +119,21 @@ function connectToLayr8(config) {
       // Check if this is a chat message
       if (ticketData && ticketData.type === 'chat') {
         console.log('Received chat message:', ticketData);
-
+        let senderLabel = 'Unknown Sender';
+        try {
+          if (
+            message.context &&
+            message.context.sender_credentials &&
+            message.context.sender_credentials[0] &&
+            message.context.sender_credentials[0].credentialSubject &&
+            message.context.sender_credentials[0].credentialSubject.label
+          ) {
+            senderLabel =
+              message.context.sender_credentials[0].credentialSubject.label;
+          }
+        } catch (error) {
+          console.error('Error extracting sender label:', error);
+        }
         // Send chat message to WebSocket clients
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
