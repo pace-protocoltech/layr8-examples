@@ -116,6 +116,25 @@
         background-color: #f8f9fa;
       }
 
+      @keyframes flashRow {
+        0% {
+          background-color: #ffeb3b !important;
+          transform: scale(1.02);
+        }
+        50% {
+          background-color: #fff59d !important;
+          transform: scale(1);
+        }
+        100% {
+          background-color: white !important;
+          transform: scale(1);
+        }
+      }
+
+      .messages-table tbody tr.new-message {
+        animation: flashRow 1.5s ease-in-out 3 !important;
+      }
+
       .chat-interface {
         display: none;
         background: white;
@@ -429,7 +448,10 @@
 
         if (connected) {
           statusElement.className = 'connection-status connected';
-          statusElement.textContent = 'Connected to Layr8';
+          // Get the current DID from the config
+          const currentDid = document.getElementById('myDid').value;
+          const shortDid = currentDid ? currentDid.split(':').pop() : '';
+          statusElement.textContent = `Connected to Layr8 as ${shortDid}`;
           configForm.classList.add('hidden');
           chatInterface.classList.add('visible');
           clearError();
@@ -483,6 +505,7 @@
 
         document.getElementById('messages').appendChild(row);
         scrollToBottom();
+        flashRow(row);
       }
 
       function updateVerificationStatus(messageId, verifierDid) {
@@ -535,6 +558,25 @@
           });
       }
 
+      function flashRow(row) {
+        let flashCount = 0;
+        const maxFlashes = 6;
+
+        const flash = () => {
+          if (flashCount >= maxFlashes) {
+            row.style.backgroundColor = '';
+            return;
+          }
+
+          row.style.backgroundColor =
+            flashCount % 2 === 0 ? '#ffeb3b' : '#ffffff';
+          flashCount++;
+          setTimeout(flash, 300);
+        };
+
+        flash();
+      }
+
       function disconnect() {
         if (ws) {
           ws.close();
@@ -545,10 +587,9 @@
         document.getElementById('messages').innerHTML = '';
 
         // Clear the configuration form
-        document.getElementById('host').value = 'venus.node.layr8.io';
+        document.getElementById('host').value = '';
         document.getElementById('myDid').value = '';
-        document.getElementById('apiKey').value =
-          'chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V';
+        document.getElementById('apiKey').value = '';
 
         // Notify the server to disconnect from Layr8
         fetch('/disconnect', {
