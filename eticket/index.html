@@ -258,6 +258,98 @@
       .connecting {
         display: inline-block;
       }
+
+      /* Modal styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+      }
+
+      .modal-content {
+        background-color: #fefefe;
+        margin: 15% auto;
+        padding: 0;
+        border: 1px solid #888;
+        border-radius: 8px;
+        width: 400px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .modal-header {
+        padding: 15px 20px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        border-radius: 8px 8px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        color: #1a73e8;
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .modal-body textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+
+      .modal-footer {
+        padding: 15px 20px;
+        background-color: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+        border-radius: 0 0 8px 8px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .close {
+        color: #aaa;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      .close:hover,
+      .close:focus {
+        color: #000;
+      }
+
+      .cancel-button {
+        background-color: #6c757d;
+      }
+
+      .cancel-button:hover {
+        background-color: #5a6268;
+      }
+
+      .recipients-list li {
+        margin: 2px 0;
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+
+      .recipients-list li:hover {
+        color: #1a73e8;
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
@@ -323,6 +415,74 @@
 
     <script>
       let ws;
+
+      let currentChatRecipient = null;
+
+      function openChatModal(recipientDid, shortName) {
+        currentChatRecipient = recipientDid;
+        document.getElementById(
+          'modal-title'
+        ).textContent = `Send Message to ${shortName}`;
+        document.getElementById('chat-message').value = '';
+        document.getElementById('chat-modal').style.display = 'block';
+        document.getElementById('chat-message').focus();
+      }
+
+      function closeChatModal() {
+        document.getElementById('chat-modal').style.display = 'none';
+        currentChatRecipient = null;
+      }
+
+      function sendChatMessage() {
+        const message = document.getElementById('chat-message').value.trim();
+
+        if (!message) {
+          alert('Please enter a message');
+          return;
+        }
+
+        if (!currentChatRecipient) {
+          alert('No recipient selected');
+          return;
+        }
+
+        // Send the message via WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: 'chat',
+              to: currentChatRecipient,
+              message: message,
+            })
+          );
+
+          closeChatModal();
+          alert('Message sent!');
+        } else {
+          alert('Not connected to server');
+        }
+      }
+
+      // Close modal when clicking outside of it
+      window.onclick = function (event) {
+        const modal = document.getElementById('chat-modal');
+        if (event.target === modal) {
+          closeChatModal();
+        }
+      };
+
+      // Allow Enter key to send message in modal
+      document.addEventListener('DOMContentLoaded', function () {
+        const chatTextarea = document.getElementById('chat-message');
+        if (chatTextarea) {
+          chatTextarea.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendChatMessage();
+            }
+          });
+        }
+      });
 
       function showError(message) {
         const errorMessage = document.getElementById('error-message');
@@ -481,7 +641,7 @@
           otherRecipients.forEach((recipient) => {
             // Show shortened DID for readability
             const shortDid = recipient.split(':').pop();
-            recipientsHtml += `<li id="recipient-${messageId}-${recipient}" title="${recipient}">${shortDid}</li>`;
+            recipientsHtml += `<li id="recipient-${messageId}-${recipient}" title="${recipient}" onclick="openChatModal('${recipient}', '${shortDid}')">${shortDid}</li>`;
           });
           recipientsHtml += '</ul>';
         }
@@ -635,5 +795,28 @@
           console.error('Error fetching config:', error);
         });
     </script>
+
+    <!-- Chat Modal -->
+    <div id="chat-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title">Send Message</h3>
+          <span class="close" onclick="closeChatModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+          <textarea
+            id="chat-message"
+            placeholder="Type your message here..."
+            rows="4"
+          ></textarea>
+        </div>
+        <div class="modal-footer">
+          <button onclick="sendChatMessage()">Send</button>
+          <button onclick="closeChatModal()" class="cancel-button">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
