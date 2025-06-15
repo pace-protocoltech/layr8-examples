@@ -414,6 +414,18 @@
         color: #1a73e8;
         margin-bottom: 4px;
       }
+
+      .sender-link {
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+
+      .sender-link:hover {
+        color: #1a73e8;
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
@@ -479,6 +491,8 @@
 
     <script>
       let ws;
+
+      const clientMessageMap = new Map();
 
       let currentChatRecipient = null;
 
@@ -645,6 +659,12 @@
           console.log('WebSocket message received:', message);
 
           if (message.type === 'message') {
+            clientMessageMap.set(message.id, {
+              senderDid: message.senderDid || message.sender,
+              senderLabel: message.sender,
+              otherRecipients: message.otherRecipients || [],
+            });
+
             addMessage(
               message.sender,
               message.material,
@@ -698,6 +718,7 @@
       ) {
         const row = document.createElement('tr');
         row.id = `message-row-${messageId}`;
+        row.setAttribute('data-sender-did', sender);
         const timestamp = new Date().toLocaleTimeString();
 
         // Format other recipients for display
@@ -713,7 +734,8 @@
         }
 
         row.innerHTML = `
-          <td>${sender}</td>
+        <td><a class="sender-link" onclick="openChatModalForSender('${messageId}')">${sender}</a></td>
+
           <td>${material}</td>
           <td>${weight}</td>
           <td>${timestamp}</td>
@@ -732,6 +754,22 @@
         document.getElementById('messages').appendChild(row);
         scrollToBottom();
         flashRow(row);
+      }
+
+      function openChatModalForSender(messageId) {
+        const messageInfo = clientMessageMap.get(messageId);
+        if (!messageInfo || !messageInfo.senderDid) {
+          console.error(
+            'Could not find sender information for message:',
+            messageId
+          );
+          return;
+        }
+
+        const senderDid = messageInfo.senderDid;
+        const shortName = messageInfo.senderLabel || senderDid.split(':').pop();
+
+        openChatModal(senderDid, shortName);
       }
 
       function updateVerificationStatus(messageId, verifierDid) {
