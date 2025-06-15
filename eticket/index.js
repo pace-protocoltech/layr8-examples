@@ -117,7 +117,10 @@ function connectToLayr8(config) {
       }
 
       // Check if this is a chat message
-      if (ticketData && ticketData.type === 'chat') {
+      if (
+        ticketData &&
+        (ticketData.type === 'chat' || ticketData.type === 'chatMessage')
+      ) {
         console.log('Received chat message:', ticketData);
         let senderLabel = 'Unknown Sender';
         try {
@@ -134,6 +137,8 @@ function connectToLayr8(config) {
         } catch (error) {
           console.error('Error extracting sender label:', error);
         }
+
+        const messageContent = ticketData.message || ticketData.content || '';
         // Send chat message to WebSocket clients
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
@@ -142,7 +147,7 @@ function connectToLayr8(config) {
                 type: 'chatMessage',
                 from: from,
                 fromLabel: senderLabel,
-                message: ticketData.message,
+                message: messageContent,
                 timestamp: ticketData.timestamp || new Date().toISOString(),
                 id: id,
               })
@@ -237,6 +242,7 @@ function connectToLayr8(config) {
             JSON.stringify({
               type: 'message',
               sender: senderLabel,
+              senderDid: from,
               material: material,
               weight: netWeight,
               otherRecipients: otherRecipients,
