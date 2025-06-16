@@ -426,6 +426,11 @@
         color: #1a73e8;
         text-decoration: underline;
       }
+
+      input[readonly] {
+        background-color: #f5f5f5;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
@@ -433,27 +438,24 @@
       <h2>Layr8 Configuration</h2>
       <div id="error-message" class="error-message"></div>
       <div class="input-group">
-        <label for="host">Host</label>
-        <input type="text" id="host" value="venus.node.layr8.io" />
-      </div>
-      <div class="input-group">
         <label for="myDid">DID</label>
-        <select id="myDid">
-          <option value="did:web:venus.node.layr8.io:demo-contractor-1">
-            Contractor 1 (did:web:venus.node.layr8.io:demo-contractor-1)
+        <select id="myDid" onchange="updateConfigFromDid()">
+          <option value="">Select a DID...</option>
+          <option value="did:web:contractor.node.layr8.io:demo-contractor-1">
+            Contractor 1 (did:web:contractor.node.layr8.io:demo-contractor-1)
           </option>
-          <option value="did:web:venus.node.layr8.io:demo-trucker-1">
-            Trucker 1 (did:web:venus.node.layr8.io:demo-trucker-1)
+          <option value="did:web:hauler.node.layr8.io:demo-truck-1">
+            Truck 1 (did:web:hauler.node.layr8.io:demo-truck-1)
           </option>
         </select>
       </div>
       <div class="input-group">
+        <label for="host">Host</label>
+        <input type="text" id="host" readonly />
+      </div>
+      <div class="input-group">
         <label for="apiKey">API Key</label>
-        <input
-          type="password"
-          id="apiKey"
-          value="chatbot_agBNowkv_x02vtrmlT4B4tDDYl6deNj2V"
-        />
+        <input type="password" id="apiKey" readonly />
       </div>
       <button id="connect-button" onclick="saveConfig()">
         <span id="button-text">Connect to Layr8</span>
@@ -495,6 +497,33 @@
       const clientMessageMap = new Map();
 
       let currentChatRecipient = null;
+
+      const didConfigurations = {
+        'did:web:contractor.node.layr8.io:demo-contractor-1': {
+          host: 'contractor.node.layr8.io',
+          apiKey: 'demo_J60farEu_wYLUPoPZEEbYtsalFT0j8wKe',
+        },
+        'did:web:hauler.node.layr8.io:demo-truck-1': {
+          host: 'hauler.node.layr8.io',
+          apiKey: 'demo_ZpwrLuRk_XzdU7EPv23MVLsGaa2tyxx8Z',
+        },
+      };
+
+      function updateConfigFromDid() {
+        const didSelect = document.getElementById('myDid');
+        const selectedDid = didSelect.value;
+        const hostInput = document.getElementById('host');
+        const apiKeyInput = document.getElementById('apiKey');
+
+        if (selectedDid && didConfigurations[selectedDid]) {
+          const config = didConfigurations[selectedDid];
+          hostInput.value = config.host;
+          apiKeyInput.value = config.apiKey;
+        } else {
+          hostInput.value = '';
+          apiKeyInput.value = '';
+        }
+      }
 
       function openChatModal(recipientDid, shortName) {
         currentChatRecipient = recipientDid;
@@ -596,7 +625,6 @@
 
       function saveConfig() {
         clearError();
-        setLoading(true);
 
         const config = {
           host: document.getElementById('host').value.trim(),
@@ -604,10 +632,14 @@
           apiKey: document.getElementById('apiKey').value.trim(),
         };
 
+        console.log('Attempting to save config:', config);
+
         if (!config.host || !config.myDid || !config.apiKey) {
-          showError('All fields are required');
+          showError('Please select a DID from the dropdown');
           return;
         }
+
+        setLoading(true);
 
         fetch('/config', {
           method: 'POST',
@@ -616,8 +648,12 @@
           },
           body: JSON.stringify(config),
         })
-          .then((response) => response.json())
+          .then((response) => {
+            console.log('Config response status:', response.status);
+            return response.json();
+          })
           .then((data) => {
+            console.log('Config response data:', data);
             if (data.status === 'success') {
               connectWebSocket();
             } else {
@@ -1018,8 +1054,8 @@
         document.getElementById('messages').innerHTML = '';
 
         // Clear the configuration form
-        document.getElementById('host').value = '';
         document.getElementById('myDid').value = '';
+        document.getElementById('host').value = '';
         document.getElementById('apiKey').value = '';
 
         // Notify the server to disconnect from Layr8
