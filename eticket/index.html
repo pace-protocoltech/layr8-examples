@@ -655,9 +655,11 @@
           .then((data) => {
             console.log('Config response data:', data);
             if (data.status === 'success') {
-              connectWebSocket();
+              // Add a small delay for Safari
+              setTimeout(() => {
+                connectWebSocket();
+              }, 100);
             } else {
-              // Use the user-friendly error message from the server
               const errorMsg = data.message || 'Failed to save configuration';
               throw new Error(errorMsg);
             }
